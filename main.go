@@ -78,23 +78,35 @@ func runSetup() {
 	fmt.Println()
 
 	// 1. Generate server config using proper flags so ovpn_getclient
-	//    also produces correct client configs (tls-crypt, cipher, auth, DNS)
+	//    also produces correct client configs (tls-crypt, cipher, auth, DNS).
+	//    NOTE: ovpn_genconfig has parsing bugs with -e, so we only pass
+	//    well-supported flags here and append extra directives to the file.
 	step("1/3", "Generating server config")
 	run("ovpn_genconfig",
 		"-u", fmt.Sprintf("udp://%s:%s", ip, port),
 		"-C", "AES-256-GCM",
 		"-a", "SHA256",
-		"-T", // tls-crypt instead of tls-auth
+		"-T",
 		"-n", "1.1.1.1",
 		"-n", "1.0.0.1",
-		"-e", "tls-version-min 1.2",
-		"-e", "tls-cipher TLS-ECDHE-ECDSA-WITH-AES-256-GCM-SHA384",
 	)
 
-	// Patch: fix port to internal 1194, switch to ECDSA (dh none)
+	// Patch config: internal port always 1194, ECDSA needs dh none
 	confPath := filepath.Join(ovpnDir, "openvpn.conf")
 	run("sed", "-i", "s/^port .*/port 1194/", confPath)
 	run("sed", "-i", "s/^dh dh.pem/dh none/", confPath)
+
+	// Append TLS hardening (can't use -e flags — ovpn_genconfig mangles them)
+	extraConfig := "\ntls-version-min 1.2\ntls-cipher TLS-ECDHE-ECDSA-WITH-AES-256-GCM-SHA384\n"
+	f, err := os.OpenFile(confPath, os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		fatal("Failed to open config: " + err.Error())
+	}
+	if _, err := f.WriteString(extraConfig); err != nil {
+		f.Close()
+		fatal("Failed to append config: " + err.Error())
+	}
+	f.Close()
 
 	validateConfig(confPath)
 
