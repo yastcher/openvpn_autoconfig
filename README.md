@@ -11,7 +11,7 @@ Minimal OpenVPN server in Docker. Go CLI is compiled inside the container.
 ### Quick Start
 
 ```bash
-git clone <repo-url> ~/openvpn && cd ~/openvpn
+git clone https://github.com/yastcher/openvpn_autoconfig.git ~/openvpn && cd ~/openvpn
 
 cp .env.example .env
 nano .env                        # set VPN_SERVER_IP
@@ -89,7 +89,7 @@ rm -rf data/ clients/
 ### Быстрый старт
 
 ```bash
-git clone <repo-url> ~/openvpn && cd ~/openvpn
+git clone https://github.com/yastcher/openvpn_autoconfig.git ~/openvpn && cd ~/openvpn
 
 cp .env.example .env
 nano .env                        # вписать VPN_SERVER_IP
