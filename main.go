@@ -23,10 +23,10 @@ func main() {
 	case "setup":
 		runSetup()
 	case "create":
-		requireArg(3, "vpn create <имя>")
+		requireArg(3, "vpn create <name>")
 		runCreate(os.Args[2])
 	case "revoke":
-		requireArg(3, "vpn revoke <имя>")
+		requireArg(3, "vpn revoke <name>")
 		runRevoke(os.Args[2])
 	case "list":
 		runList()
@@ -39,17 +39,17 @@ func main() {
 }
 
 func printUsage() {
-	fmt.Print(`vpn — управление OpenVPN сервером
+	fmt.Print(`vpn — OpenVPN server management
 
-Команды:
-  setup           Инициализация сервера (один раз)
-  create <имя>    Создать клиента → /clients/<имя>.ovpn
-  revoke <имя>    Отозвать клиента
-  list            Список клиентов
+Commands:
+  setup           Initialize server (one time)
+  create <name>   Create client → /clients/<name>.ovpn
+  revoke <name>   Revoke client
+  list            List clients
 
-Переменные окружения (для setup):
-  VPN_SERVER_IP   Публичный IP сервера (обязательно)
-  VPN_PORT        Внешний порт (по умолчанию 1194)
+Environment variables (for setup):
+  VPN_SERVER_IP   Public server IP (required)
+  VPN_PORT        External port (default 1194)
 `)
 }
 
@@ -60,13 +60,13 @@ func printUsage() {
 func runSetup() {
 	ip := os.Getenv("VPN_SERVER_IP")
 	if ip == "" || ip == "YOUR_SERVER_IP" {
-		fatal("VPN_SERVER_IP не задан. Проверь .env")
+		fatal("VPN_SERVER_IP not set. Check .env")
 	}
 
 	port := envOr("VPN_PORT", "1194")
 
 	if _, err := os.Stat(filepath.Join(ovpnDir, "pki")); err == nil {
-		fatal("PKI уже инициализирован. Для сброса: удали ./data/ и запусти заново.")
+		fatal("PKI already initialized. To reset: delete ./data/ and run again.")
 	}
 
 	fmt.Println()
@@ -78,7 +78,7 @@ func runSetup() {
 	fmt.Println()
 
 	// 1. Generate server config
-	step("1/3", "Генерация конфига сервера")
+	step("1/3", "Generating server config")
 	run("ovpn_genconfig",
 		"-u", fmt.Sprintf("udp://%s:%s", ip, port),
 		"-C", "AES-256-GCM",
@@ -95,24 +95,24 @@ func runSetup() {
 	run("sed", "-i", "s/^port .*/port 1194/", confPath)
 
 	// 2. Initialize PKI with ECDSA
-	step("2/3", "Инициализация PKI (ECDSA P-256, без пароля CA)")
+	step("2/3", "Initializing PKI (ECDSA P-256, no CA password)")
 	setEasyRSAEnv()
 	os.Setenv("EASYRSA_BATCH", "1")
 	run("ovpn_initpki", "nopass")
 
 	// 3. Persist EasyRSA vars for future client creation
-	step("3/3", "Сохранение настроек EasyRSA")
+	step("3/3", "Saving EasyRSA settings")
 	varsPath := filepath.Join(ovpnDir, "pki", "vars")
 	vars := "set_var EASYRSA_ALGO     ec\nset_var EASYRSA_CURVE    prime256v1\n"
 	if err := os.WriteFile(varsPath, []byte(vars), 0644); err != nil {
-		fatal("Не удалось записать vars: " + err.Error())
+		fatal("Failed to write vars: " + err.Error())
 	}
 
 	fmt.Println()
-	fmt.Println("✅ Сервер инициализирован!")
+	fmt.Println("✅ Server initialized!")
 	fmt.Println()
-	fmt.Println("  docker compose up -d              # запустить")
-	fmt.Println("  docker compose exec openvpn vpn create phone  # создать клиента")
+	fmt.Println("  docker compose up -d              # start server")
+	fmt.Println("  docker compose exec openvpn vpn create phone  # create client")
 	fmt.Println()
 }
 
@@ -125,33 +125,33 @@ func runCreate(name string) {
 
 	outPath := filepath.Join(clientsDir, name+".ovpn")
 	if _, err := os.Stat(outPath); err == nil {
-		fatal(fmt.Sprintf("Файл %s уже существует. Удали его или выбери другое имя.", outPath))
+		fatal(fmt.Sprintf("File %s already exists. Delete it or choose another name.", outPath))
 	}
 
 	if err := os.MkdirAll(clientsDir, 0755); err != nil {
-		fatal("Не удалось создать " + clientsDir + ": " + err.Error())
+		fatal("Failed to create " + clientsDir + ": " + err.Error())
 	}
 
-	fmt.Printf("==> Создание клиента: %s\n", name)
+	fmt.Printf("==> Creating client: %s\n", name)
 	setEasyRSAEnv()
 	run("easyrsa", "build-client-full", name, "nopass")
 
-	fmt.Println("==> Экспорт .ovpn...")
+	fmt.Println("==> Exporting .ovpn...")
 	cmd := exec.Command("ovpn_getclient", name)
 	cmd.Stderr = os.Stderr
 	out, err := cmd.Output()
 	if err != nil {
-		fatal("Ошибка экспорта: " + err.Error())
+		fatal("Export error: " + err.Error())
 	}
 
 	if err := os.WriteFile(outPath, out, 0600); err != nil {
-		fatal("Не удалось записать файл: " + err.Error())
+		fatal("Failed to write file: " + err.Error())
 	}
 
 	fmt.Println()
 	fmt.Printf("✅ %s\n", outPath)
-	fmt.Println("   Скопируй на устройство → импортируй в OpenVPN Connect.")
-	fmt.Println("   Файл содержит все ключи — храни как пароль!")
+	fmt.Println("   Copy to device → import into OpenVPN Connect.")
+	fmt.Println("   File contains all keys — store like a password!")
 	fmt.Println()
 }
 
@@ -164,17 +164,17 @@ func runRevoke(name string) {
 
 	certPath := filepath.Join(ovpnDir, "pki", "issued", name+".crt")
 	if _, err := os.Stat(certPath); os.IsNotExist(err) {
-		fatal(fmt.Sprintf("Клиент '%s' не найден.", name))
+		fatal(fmt.Sprintf("Client '%s' not found.", name))
 	}
 
-	fmt.Printf("==> Отзыв клиента: %s\n", name)
+	fmt.Printf("==> Revoking client: %s\n", name)
 	os.Setenv("EASYRSA_BATCH", "1")
 	run("ovpn_revokeclient", name)
 
 	os.Remove(filepath.Join(clientsDir, name+".ovpn"))
 
 	fmt.Println()
-	fmt.Printf("✅ Клиент %s отозван. Его .ovpn больше не работает.\n", name)
+	fmt.Printf("✅ Client %s revoked. Its .ovpn no longer works.\n", name)
 	fmt.Println()
 }
 
@@ -188,10 +188,10 @@ func runList() {
 	issuedDir := filepath.Join(ovpnDir, "pki", "issued")
 	entries, err := os.ReadDir(issuedDir)
 	if err != nil {
-		fatal("Не удалось прочитать " + issuedDir)
+		fatal("Failed to read " + issuedDir)
 	}
 
-	fmt.Println("Клиенты:")
+	fmt.Println("Clients:")
 	count := 0
 	for _, e := range entries {
 		name := strings.TrimSuffix(e.Name(), ".crt")
@@ -200,7 +200,7 @@ func runList() {
 			continue
 		}
 
-		status := "✗ ovpn не экспортирован"
+		status := "✗ ovpn not exported"
 		ovpnPath := filepath.Join(clientsDir, name+".ovpn")
 		if _, err := os.Stat(ovpnPath); err == nil {
 			status = "✓ " + ovpnPath
@@ -209,7 +209,7 @@ func runList() {
 		// Check if revoked
 		revokedPath := filepath.Join(ovpnDir, "pki", "revoked", "certs_by_serial")
 		if isRevoked(revokedPath, name) {
-			status = "⊘ отозван"
+			status = "⊘ revoked"
 		}
 
 		fmt.Printf("  • %-20s %s\n", name, status)
@@ -217,7 +217,7 @@ func runList() {
 	}
 
 	if count == 0 {
-		fmt.Println("  (пусто — создай клиента: vpn create <имя>)")
+		fmt.Println("  (empty — create client: vpn create <name>)")
 	}
 	fmt.Println()
 }
@@ -232,7 +232,7 @@ func run(name string, args ...string) {
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin
 	if err := cmd.Run(); err != nil {
-		fatal(fmt.Sprintf("Команда '%s' завершилась с ошибкой: %v", name, err))
+		fatal(fmt.Sprintf("Command '%s' failed: %v", name, err))
 	}
 }
 
@@ -243,7 +243,7 @@ func setEasyRSAEnv() {
 
 func checkPKI() {
 	if _, err := os.Stat(filepath.Join(ovpnDir, "pki")); os.IsNotExist(err) {
-		fatal("Сервер не инициализирован. Сначала: docker compose run --rm openvpn vpn setup")
+		fatal("Server not initialized. First run: docker compose run --rm openvpn vpn setup")
 	}
 }
 
@@ -256,7 +256,7 @@ func envOr(key, fallback string) string {
 
 func requireArg(n int, usage string) {
 	if len(os.Args) < n {
-		fatal("Использование: " + usage)
+		fatal("Usage: " + usage)
 	}
 }
 
@@ -278,4 +278,8 @@ func isRevoked(revokedDir, name string) bool {
 func fatal(msg string) {
 	fmt.Fprintf(os.Stderr, "❌ %s\n", msg)
 	os.Exit(1)
+}
+
+func step(num, msg string) {
+	fmt.Printf("==> [%s] %s\n", num, msg)
 }

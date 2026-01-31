@@ -4,3 +4,4 @@ clients/
 .venv
 *.ovpn
 .idea
+.claude
