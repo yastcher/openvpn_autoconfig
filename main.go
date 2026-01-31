@@ -88,6 +88,7 @@ func runSetup() {
 	run("sed", "-i", "s/^port .*/port 1194/", confPath)
 	run("sed", "-i", "s/^dh dh.pem/dh none/", confPath)
 	run("sed", "-i", "/^tls-cipher/d", confPath)   // remove any garbage tls-cipher lines
+	run("sed", "-i", "/^tls-auth/d", confPath)     // remove tls-auth (we use tls-crypt)
 	run("sed", "-i", "/^cipher /d", confPath)      // remove default cipher
 	run("sed", "-i", "/^auth /d", confPath)        // remove default auth
 
