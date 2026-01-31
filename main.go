@@ -77,40 +77,24 @@ func runSetup() {
 	fmt.Println("╚══════════════════════════════════════╝")
 	fmt.Println()
 
-	// 1. Generate server config (minimal flags — ovpn_genconfig has parsing bugs)
+	// 1. Generate server config using proper flags so ovpn_getclient
+	//    also produces correct client configs (tls-crypt, cipher, auth, DNS)
 	step("1/3", "Generating server config")
 	run("ovpn_genconfig",
 		"-u", fmt.Sprintf("udp://%s:%s", ip, port),
+		"-C", "AES-256-GCM",
+		"-a", "SHA256",
+		"-T", // tls-crypt instead of tls-auth
+		"-n", "1.1.1.1",
+		"-n", "1.0.0.1",
+		"-e", "tls-version-min 1.2",
+		"-e", "tls-cipher TLS-ECDHE-ECDSA-WITH-AES-256-GCM-SHA384",
 	)
 
-	// Patch config: remove garbage, set correct values
+	// Patch: fix port to internal 1194, switch to ECDSA (dh none)
 	confPath := filepath.Join(ovpnDir, "openvpn.conf")
 	run("sed", "-i", "s/^port .*/port 1194/", confPath)
 	run("sed", "-i", "s/^dh dh.pem/dh none/", confPath)
-	run("sed", "-i", "/^tls-cipher/d", confPath)   // remove any garbage tls-cipher lines
-	run("sed", "-i", "/^tls-auth/d", confPath)     // remove tls-auth (we use tls-crypt)
-	run("sed", "-i", "/^cipher /d", confPath)      // remove default cipher
-	run("sed", "-i", "/^auth /d", confPath)        // remove default auth
-
-	// Append all crypto settings
-	cryptoConfig := `
-cipher AES-256-GCM
-auth SHA256
-tls-crypt /etc/openvpn/pki/ta.key
-tls-version-min 1.2
-tls-cipher TLS-ECDHE-ECDSA-WITH-AES-256-GCM-SHA384
-push "dhcp-option DNS 1.1.1.1"
-push "dhcp-option DNS 1.0.0.1"
-`
-	f, err := os.OpenFile(confPath, os.O_APPEND|os.O_WRONLY, 0644)
-	if err != nil {
-		fatal("Failed to open config: " + err.Error())
-	}
-	if _, err := f.WriteString(cryptoConfig); err != nil {
-		f.Close()
-		fatal("Failed to write crypto config: " + err.Error())
-	}
-	f.Close()
 
 	validateConfig(confPath)
 
