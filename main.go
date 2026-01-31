@@ -81,7 +81,6 @@ func runSetup() {
 	step("1/3", "Generating server config")
 	run("ovpn_genconfig",
 		"-u", fmt.Sprintf("udp://%s:%s", ip, port),
-		"-T", // generate tls-crypt key (ta.key)
 	)
 
 	// Patch config: remove garbage, set correct values
