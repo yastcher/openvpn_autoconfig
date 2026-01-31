@@ -1,6 +1,6 @@
 services:
   openvpn:
-    image: kylemanna/openvpn
+    build: .
     container_name: openvpn
     cap_add:
       - NET_ADMIN
@@ -8,4 +8,8 @@ services:
       - "${VPN_PORT:-1194}:1194/udp"
     volumes:
       - ./data:/etc/openvpn
+      - ./clients:/clients
+    environment:
+      - VPN_SERVER_IP=${VPN_SERVER_IP}
+      - VPN_PORT=${VPN_PORT:-1194}
     restart: unless-stopped

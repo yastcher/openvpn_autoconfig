@@ -1,122 +1,75 @@
 # OpenVPN Docker Server
 
-Минимальный OpenVPN-сервер в Docker. Три команды — и работает.
-
-## Что внутри
-
-- **ECDSA P-256** сертификаты (как у крутых, не RSA)
-- **AES-256-GCM** шифрование
-- **tls-crypt** — весь control channel зашифрован, сервер невидим для сканеров
-- **TLS 1.2+** минимум, ECDHE для forward secrecy
-- DNS через **Cloudflare** (1.1.1.1)
+Минимальный OpenVPN-сервер в Docker. CLI на Go компилируется прямо в контейнере.
 
 ## Быстрый старт
 
-### 1. На сервере: установи Docker
-
-```bash
-curl -fsSL https://get.docker.com | sh
-sudo usermod -aG docker $USER
-newgrp docker
-```
-
-### 2. Склонируй репозиторий
-
 ```bash
 git clone <repo-url> ~/openvpn && cd ~/openvpn
-```
 
-### 3. Задай IP
-
-```bash
 cp .env.example .env
-nano .env   # укажи VPN_SERVER_IP
+nano .env                        # вписать VPN_SERVER_IP
+
+docker compose build             # компилирует Go CLI + собирает образ
+docker compose run --rm openvpn vpn setup   # инициализация PKI (~1 мин)
+docker compose up -d             # запуск сервера
 ```
 
-### 4. Инициализация (один раз)
+## Создание клиента
 
 ```bash
-./setup.sh
+docker compose exec openvpn vpn create phone
 ```
 
-### 5. Запуск
+Файл `./clients/phone.ovpn` — импортируй в OpenVPN Connect.
+
+## Все команды
 
 ```bash
-docker compose up -d
+# Внутри контейнера доступна утилита `vpn`:
+docker compose exec openvpn vpn create <имя>    # создать клиента
+docker compose exec openvpn vpn revoke <имя>    # отозвать клиента
+docker compose exec openvpn vpn list             # список клиентов
 ```
 
-### 6. Создай клиента
+## Управление сервером
 
 ```bash
-./create-client.sh phone
+docker compose up -d         # запустить
+docker compose down          # остановить
+docker compose logs -f       # логи
+docker compose build         # пересобрать после изменений в Go
 ```
 
-Файл `./clients/phone.ovpn` — импортируй в OpenVPN Connect на любом устройстве.
-
----
-
-## Управление
+## Полный сброс
 
 ```bash
-# Ещё клиент
-./create-client.sh laptop
-
-# Отозвать доступ
-./revoke-client.sh laptop
-
-# Логи сервера
-docker compose logs -f
-
-# Остановить
 docker compose down
-
-# Полный сброс (удалит все сертификаты!)
-docker compose down && rm -rf data/ clients/
-```
-
-## Нестандартный порт
-
-Чтобы сервер слушал на порте 50679 вместо 1194, в `.env`:
-
-```
-VPN_PORT=50679
-```
-
-Не забудь открыть порт в файрволе:
-
-```bash
-sudo ufw allow 50679/udp   # для ufw
+rm -rf data/ clients/
+# затем заново: build → setup → up
 ```
 
 ## Структура
 
 ```
 .
-├── docker-compose.yml    # Контейнер OpenVPN
-├── .env.example          # Шаблон настроек
-├── setup.sh              # Инициализация PKI + конфиг сервера
-├── create-client.sh      # Генерация .ovpn для клиента
-├── revoke-client.sh      # Отзыв клиента
-├── data/                 # (создаётся автоматически) PKI + конфиг
-└── clients/              # (создаётся автоматически) .ovpn файлы
+├── main.go               # CLI утилита (Go)
+├── go.mod
+├── Dockerfile            # Multi-stage: golang → kylemanna/openvpn
+├── docker-compose.yml
+├── .env.example
+├── data/                 # (auto) PKI, серверный конфиг
+└── clients/              # (auto) .ovpn файлы клиентов
 ```
 
-## Безопасность
+## Криптография
 
-- CA без пароля — для автоматизации. Защита — доступ к серверу (SSH-ключи, файрвол).
-- `.ovpn` файл = полный доступ к VPN. Храни как пароль.
-- `data/` и `clients/` в `.gitignore` — не коммить ключи в git.
-- Если клиент скомпрометирован — `./revoke-client.sh имя`.
-
-## Параметры шифрования (что генерируется)
-
-| Параметр | Значение |
-|----------|----------|
-| Сертификаты | ECDSA P-256 |
-| Data channel | AES-256-GCM |
-| HMAC | SHA256 |
-| TLS control | tls-crypt (v1) |
-| TLS min | 1.2 |
-| Key exchange | ECDHE-ECDSA |
-| CA expire | 10 лет |
-| Client expire | 10 лет |
+| Параметр       | Значение                              |
+|----------------|---------------------------------------|
+| Сертификаты    | ECDSA P-256                           |
+| Data channel   | AES-256-GCM                           |
+| HMAC           | SHA256                                |
+| TLS control    | tls-crypt                             |
+| TLS min        | 1.2                                   |
+| Key exchange   | ECDHE-ECDSA-AES-256-GCM-SHA384       |
+| DNS            | 1.1.1.1 / 1.0.0.1 (Cloudflare)       |
