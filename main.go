@@ -10,6 +10,7 @@ import (
 
 const (
 	ovpnDir    = "/etc/openvpn"
+	pkiDir     = "/etc/openvpn/pki"
 	clientsDir = "/clients"
 )
 
@@ -65,7 +66,7 @@ func runSetup() {
 
 	port := envOr("VPN_PORT", "1194")
 
-	if _, err := os.Stat(filepath.Join(ovpnDir, "pki")); err == nil {
+	if _, err := os.Stat(pkiDir); err == nil {
 		fatal("PKI already initialized. To reset: delete ./data/ and run again.")
 	}
 
@@ -77,58 +78,78 @@ func runSetup() {
 	fmt.Println("╚══════════════════════════════════════╝")
 	fmt.Println()
 
-	// 1. Generate server config using proper flags so ovpn_getclient
-	//    also produces correct client configs (tls-crypt, cipher, auth, DNS).
-	//    NOTE: ovpn_genconfig has parsing bugs with -e, so we only pass
-	//    well-supported flags here and append extra directives to the file.
-	step("1/3", "Generating server config")
-	run("ovpn_genconfig",
-		"-u", fmt.Sprintf("udp://%s:%s", ip, port),
-		"-C", "AES-256-GCM",
-		"-a", "SHA256",
-		"-T",
-		"-n", "1.1.1.1",
-		"-n", "1.0.0.1",
-	)
-
-	// Patch config: internal port always 1194, ECDSA needs dh none
-	confPath := filepath.Join(ovpnDir, "openvpn.conf")
-	run("sed", "-i", "s/^port .*/port 1194/", confPath)
-	run("sed", "-i", "s/^dh dh.pem/dh none/", confPath)
-
-	// Append TLS hardening (can't use -e flags — ovpn_genconfig mangles them)
-	extraConfig := "\ntls-version-min 1.2\ntls-cipher TLS-ECDHE-ECDSA-WITH-AES-256-GCM-SHA384\n"
-	f, err := os.OpenFile(confPath, os.O_APPEND|os.O_WRONLY, 0644)
-	if err != nil {
-		fatal("Failed to open config: " + err.Error())
-	}
-	if _, err := f.WriteString(extraConfig); err != nil {
-		f.Close()
-		fatal("Failed to append config: " + err.Error())
-	}
-	f.Close()
-
-	validateConfig(confPath)
-
-	// 2. Initialize PKI with ECDSA
-	step("2/3", "Initializing PKI (ECDSA P-256, no CA password)")
 	setEasyRSAEnv()
-	os.Setenv("EASYRSA_BATCH", "1")
-	run("ovpn_initpki", "nopass")
 
-	// 3. Persist EasyRSA vars for future client creation
-	step("3/3", "Saving EasyRSA settings")
-	varsPath := filepath.Join(ovpnDir, "pki", "vars")
-	vars := "set_var EASYRSA_ALGO     ec\nset_var EASYRSA_CURVE    prime256v1\n"
-	if err := os.WriteFile(varsPath, []byte(vars), 0644); err != nil {
-		fatal("Failed to write vars: " + err.Error())
+	// 1. Initialize PKI
+	step("1/5", "Initializing PKI")
+	run("easyrsa", "init-pki")
+
+	// 2. Build CA (ECDSA P-256, no password)
+	step("2/5", "Building CA (ECDSA P-256)")
+	os.Setenv("EASYRSA_REQ_CN", "OpenVPN-CA")
+	run("easyrsa", "build-ca", "nopass")
+
+	// 3. Generate server certificate
+	step("3/5", "Generating server certificate")
+	run("easyrsa", "build-server-full", "server", "nopass")
+
+	// 4. Generate tls-crypt key + initial CRL
+	step("4/5", "Generating tls-crypt key and CRL")
+	taKeyPath := filepath.Join(pkiDir, "ta.key")
+	run("openvpn", "--genkey", "--secret", taKeyPath)
+	run("easyrsa", "gen-crl")
+	os.Chmod(filepath.Join(pkiDir, "crl.pem"), 0644)
+
+	// 5. Write server config
+	step("5/5", "Writing server config")
+
+	serverConf := fmt.Sprintf(`port 1194
+proto udp
+dev tun
+ca %[1]s/ca.crt
+cert %[1]s/issued/server.crt
+key %[1]s/private/server.key
+dh none
+topology subnet
+server 192.168.255.0 255.255.255.0
+ifconfig-pool-persist /etc/openvpn/ipp.txt
+push "redirect-gateway def1 bypass-dhcp"
+push "dhcp-option DNS 1.1.1.1"
+push "dhcp-option DNS 1.0.0.1"
+push "block-outside-dns"
+keepalive 10 120
+cipher AES-256-GCM
+auth SHA256
+tls-crypt %[1]s/ta.key
+tls-version-min 1.2
+tls-cipher TLS-ECDHE-ECDSA-WITH-AES-256-GCM-SHA384
+crl-verify %[1]s/crl.pem
+persist-key
+persist-tun
+status /etc/openvpn/status.log
+verb 3
+explicit-exit-notify 1
+`, pkiDir)
+
+	confPath := filepath.Join(ovpnDir, "openvpn.conf")
+	if err := os.WriteFile(confPath, []byte(serverConf), 0644); err != nil {
+		fatal("Failed to write server config: " + err.Error())
 	}
+
+	// Save connection info for client generation
+	vpnEnv := fmt.Sprintf("VPN_SERVER_IP=%s\nVPN_PORT=%s\n", ip, port)
+	os.WriteFile(filepath.Join(ovpnDir, "vpn.env"), []byte(vpnEnv), 0644)
+
+	// Save EasyRSA vars for future use
+	varsPath := filepath.Join(pkiDir, "vars")
+	vars := "set_var EASYRSA_ALGO     ec\nset_var EASYRSA_CURVE    prime256v1\n"
+	os.WriteFile(varsPath, []byte(vars), 0644)
 
 	fmt.Println()
 	fmt.Println("✅ Server initialized!")
 	fmt.Println()
-	fmt.Println("  docker compose up -d              # start server")
-	fmt.Println("  docker compose exec openvpn vpn create phone  # create client")
+	fmt.Println("  docker compose up -d                              # start server")
+	fmt.Println("  docker compose exec openvpn vpn create phone      # create client")
 	fmt.Println()
 }
 
@@ -148,19 +169,50 @@ func runCreate(name string) {
 		fatal("Failed to create " + clientsDir + ": " + err.Error())
 	}
 
+	ip, port := loadVPNEnv()
+
 	fmt.Printf("==> Creating client: %s\n", name)
 	setEasyRSAEnv()
 	run("easyrsa", "build-client-full", name, "nopass")
 
-	fmt.Println("==> Exporting .ovpn...")
-	cmd := exec.Command("ovpn_getclient", name)
-	cmd.Stderr = os.Stderr
-	out, err := cmd.Output()
-	if err != nil {
-		fatal("Export error: " + err.Error())
-	}
+	fmt.Println("==> Assembling .ovpn...")
 
-	if err := os.WriteFile(outPath, out, 0600); err != nil {
+	caCert := readFile(filepath.Join(pkiDir, "ca.crt"))
+	clientCert := extractPEM(readFile(filepath.Join(pkiDir, "issued", name+".crt")), "CERTIFICATE")
+	clientKey := readFile(filepath.Join(pkiDir, "private", name+".key"))
+	taKey := readFile(filepath.Join(pkiDir, "ta.key"))
+
+	ovpn := fmt.Sprintf(`client
+dev tun
+proto udp
+remote %s %s
+resolv-retry infinite
+nobind
+persist-key
+persist-tun
+remote-cert-tls server
+verify-x509-name server name
+auth SHA256
+auth-nocache
+cipher AES-256-GCM
+tls-client
+tls-version-min 1.2
+tls-cipher TLS-ECDHE-ECDSA-WITH-AES-256-GCM-SHA384
+ignore-unknown-option block-outside-dns
+setenv opt block-outside-dns
+verb 3
+explicit-exit-notify
+<ca>
+%s</ca>
+<cert>
+%s</cert>
+<key>
+%s</key>
+<tls-crypt>
+%s</tls-crypt>
+`, ip, port, caCert, clientCert, clientKey, taKey)
+
+	if err := os.WriteFile(outPath, []byte(ovpn), 0600); err != nil {
 		fatal("Failed to write file: " + err.Error())
 	}
 
@@ -178,14 +230,16 @@ func runCreate(name string) {
 func runRevoke(name string) {
 	checkPKI()
 
-	certPath := filepath.Join(ovpnDir, "pki", "issued", name+".crt")
+	certPath := filepath.Join(pkiDir, "issued", name+".crt")
 	if _, err := os.Stat(certPath); os.IsNotExist(err) {
 		fatal(fmt.Sprintf("Client '%s' not found.", name))
 	}
 
 	fmt.Printf("==> Revoking client: %s\n", name)
-	os.Setenv("EASYRSA_BATCH", "1")
-	run("ovpn_revokeclient", name)
+	setEasyRSAEnv()
+	run("easyrsa", "revoke", name)
+	run("easyrsa", "gen-crl")
+	os.Chmod(filepath.Join(pkiDir, "crl.pem"), 0644)
 
 	os.Remove(filepath.Join(clientsDir, name+".ovpn"))
 
@@ -201,7 +255,7 @@ func runRevoke(name string) {
 func runList() {
 	checkPKI()
 
-	issuedDir := filepath.Join(ovpnDir, "pki", "issued")
+	issuedDir := filepath.Join(pkiDir, "issued")
 	entries, err := os.ReadDir(issuedDir)
 	if err != nil {
 		fatal("Failed to read " + issuedDir)
@@ -211,8 +265,7 @@ func runList() {
 	count := 0
 	for _, e := range entries {
 		name := strings.TrimSuffix(e.Name(), ".crt")
-		// Skip server certificate
-		if strings.HasPrefix(name, "server") {
+		if name == "server" {
 			continue
 		}
 
@@ -222,9 +275,7 @@ func runList() {
 			status = "✓ " + ovpnPath
 		}
 
-		// Check if revoked
-		revokedPath := filepath.Join(ovpnDir, "pki", "revoked", "certs_by_serial")
-		if isRevoked(revokedPath, name) {
+		if isRevoked(name) {
 			status = "⊘ revoked"
 		}
 
@@ -248,19 +299,68 @@ func run(name string, args ...string) {
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin
 	if err := cmd.Run(); err != nil {
-		fatal(fmt.Sprintf("Command '%s' failed: %v", name, err))
+		fatal(fmt.Sprintf("Command '%s %s' failed: %v", name, strings.Join(args, " "), err))
 	}
 }
 
 func setEasyRSAEnv() {
+	os.Setenv("EASYRSA_PKI", pkiDir)
+	os.Setenv("EASYRSA_BATCH", "1")
 	os.Setenv("EASYRSA_ALGO", "ec")
 	os.Setenv("EASYRSA_CURVE", "prime256v1")
 }
 
 func checkPKI() {
-	if _, err := os.Stat(filepath.Join(ovpnDir, "pki")); os.IsNotExist(err) {
+	if _, err := os.Stat(pkiDir); os.IsNotExist(err) {
 		fatal("Server not initialized. First run: docker compose run --rm openvpn vpn setup")
 	}
+}
+
+func loadVPNEnv() (ip, port string) {
+	ip = os.Getenv("VPN_SERVER_IP")
+	port = os.Getenv("VPN_PORT")
+
+	// Fallback: read from saved file (useful for docker compose exec)
+	if ip == "" || port == "" {
+		data, _ := os.ReadFile(filepath.Join(ovpnDir, "vpn.env"))
+		for _, line := range strings.Split(string(data), "\n") {
+			if strings.HasPrefix(line, "VPN_SERVER_IP=") && ip == "" {
+				ip = strings.TrimPrefix(line, "VPN_SERVER_IP=")
+			}
+			if strings.HasPrefix(line, "VPN_PORT=") && port == "" {
+				port = strings.TrimPrefix(line, "VPN_PORT=")
+			}
+		}
+	}
+
+	if ip == "" {
+		fatal("VPN_SERVER_IP not set")
+	}
+	if port == "" {
+		port = "1194"
+	}
+	return
+}
+
+func readFile(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		fatal("Failed to read " + path + ": " + err.Error())
+	}
+	return string(data)
+}
+
+// extractPEM returns only the PEM block of the given type.
+// EasyRSA cert files contain human-readable text before the PEM block.
+func extractPEM(data, pemType string) string {
+	begin := "-----BEGIN " + pemType + "-----"
+	end := "-----END " + pemType + "-----"
+	startIdx := strings.Index(data, begin)
+	endIdx := strings.Index(data, end)
+	if startIdx == -1 || endIdx == -1 {
+		return data
+	}
+	return data[startIdx : endIdx+len(end)] + "\n"
 }
 
 func envOr(key, fallback string) string {
@@ -276,9 +376,8 @@ func requireArg(n int, usage string) {
 	}
 }
 
-func isRevoked(revokedDir, name string) bool {
-	// Simple heuristic: check CRL index
-	indexPath := filepath.Join(ovpnDir, "pki", "index.txt")
+func isRevoked(name string) bool {
+	indexPath := filepath.Join(pkiDir, "index.txt")
 	data, err := os.ReadFile(indexPath)
 	if err != nil {
 		return false
@@ -298,23 +397,4 @@ func fatal(msg string) {
 
 func step(num, msg string) {
 	fmt.Printf("==> [%s] %s\n", num, msg)
-}
-
-func validateConfig(confPath string) {
-	data, err := os.ReadFile(confPath)
-	if err != nil {
-		fatal("Cannot read config for validation: " + err.Error())
-	}
-	found := false
-	for _, line := range strings.Split(string(data), "\n") {
-		if strings.HasPrefix(line, "tls-cipher") {
-			found = true
-			if !strings.Contains(line, "TLS-ECDHE-") {
-				fatal("Bad tls-cipher in config: " + line)
-			}
-		}
-	}
-	if !found {
-		fatal("tls-cipher directive missing from config")
-	}
 }
