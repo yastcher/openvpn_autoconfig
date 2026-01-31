@@ -12,4 +12,7 @@ services:
     environment:
       - VPN_SERVER_IP=${VPN_SERVER_IP}
       - VPN_PORT=${VPN_PORT:-1194}
+    sysctls:
+      - net.ipv6.conf.default.forwarding=1
+      - net.ipv6.conf.all.forwarding=1
     restart: unless-stopped

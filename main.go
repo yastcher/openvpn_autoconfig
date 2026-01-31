@@ -84,15 +84,26 @@ func runSetup() {
 		"-C", "AES-256-GCM",
 		"-a", "SHA256",
 		"-T",
-		"-e", "tls-version-min 1.2",
-		"-e", "tls-cipher TLS-ECDHE-ECDSA-WITH-AES-256-GCM-SHA384",
 		"-p", "dhcp-option DNS 1.1.1.1",
 		"-p", "dhcp-option DNS 1.0.0.1",
 	)
 
-	// Server listens on 1194 inside container; Docker maps VPN_PORT → 1194
+	// Patch config: port, DH, TLS settings
 	confPath := filepath.Join(ovpnDir, "openvpn.conf")
 	run("sed", "-i", "s/^port .*/port 1194/", confPath)
+	run("sed", "-i", "s/^dh dh.pem/dh none/", confPath)
+
+	// Append TLS directives (can't use -e flag due to ovpn_genconfig parsing bug)
+	tlsConfig := "\ntls-version-min 1.2\ntls-cipher TLS-ECDHE-ECDSA-WITH-AES-256-GCM-SHA384\n"
+	f, err := os.OpenFile(confPath, os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		fatal("Failed to open config: " + err.Error())
+	}
+	if _, err := f.WriteString(tlsConfig); err != nil {
+		f.Close()
+		fatal("Failed to write TLS config: " + err.Error())
+	}
+	f.Close()
 
 	// 2. Initialize PKI with ECDSA
 	step("2/3", "Initializing PKI (ECDSA P-256, no CA password)")
