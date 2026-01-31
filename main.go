@@ -77,33 +77,42 @@ func runSetup() {
 	fmt.Println("╚══════════════════════════════════════╝")
 	fmt.Println()
 
-	// 1. Generate server config
+	// 1. Generate server config (minimal flags — ovpn_genconfig has parsing bugs)
 	step("1/3", "Generating server config")
 	run("ovpn_genconfig",
 		"-u", fmt.Sprintf("udp://%s:%s", ip, port),
-		"-C", "AES-256-GCM",
-		"-a", "SHA256",
-		"-T",
-		"-p", "dhcp-option DNS 1.1.1.1",
-		"-p", "dhcp-option DNS 1.0.0.1",
+		"-T", // generate tls-crypt key (ta.key)
 	)
 
-	// Patch config: port, DH, TLS settings
+	// Patch config: remove garbage, set correct values
 	confPath := filepath.Join(ovpnDir, "openvpn.conf")
 	run("sed", "-i", "s/^port .*/port 1194/", confPath)
 	run("sed", "-i", "s/^dh dh.pem/dh none/", confPath)
+	run("sed", "-i", "/^tls-cipher/d", confPath)   // remove any garbage tls-cipher lines
+	run("sed", "-i", "/^cipher /d", confPath)      // remove default cipher
+	run("sed", "-i", "/^auth /d", confPath)        // remove default auth
 
-	// Append TLS directives (can't use -e flag due to ovpn_genconfig parsing bug)
-	tlsConfig := "\ntls-version-min 1.2\ntls-cipher TLS-ECDHE-ECDSA-WITH-AES-256-GCM-SHA384\n"
+	// Append all crypto settings
+	cryptoConfig := `
+cipher AES-256-GCM
+auth SHA256
+tls-crypt /etc/openvpn/pki/ta.key
+tls-version-min 1.2
+tls-cipher TLS-ECDHE-ECDSA-WITH-AES-256-GCM-SHA384
+push "dhcp-option DNS 1.1.1.1"
+push "dhcp-option DNS 1.0.0.1"
+`
 	f, err := os.OpenFile(confPath, os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
 		fatal("Failed to open config: " + err.Error())
 	}
-	if _, err := f.WriteString(tlsConfig); err != nil {
+	if _, err := f.WriteString(cryptoConfig); err != nil {
 		f.Close()
-		fatal("Failed to write TLS config: " + err.Error())
+		fatal("Failed to write crypto config: " + err.Error())
 	}
 	f.Close()
+
+	validateConfig(confPath)
 
 	// 2. Initialize PKI with ECDSA
 	step("2/3", "Initializing PKI (ECDSA P-256, no CA password)")
@@ -293,4 +302,23 @@ func fatal(msg string) {
 
 func step(num, msg string) {
 	fmt.Printf("==> [%s] %s\n", num, msg)
+}
+
+func validateConfig(confPath string) {
+	data, err := os.ReadFile(confPath)
+	if err != nil {
+		fatal("Cannot read config for validation: " + err.Error())
+	}
+	found := false
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.HasPrefix(line, "tls-cipher") {
+			found = true
+			if !strings.Contains(line, "TLS-ECDHE-") {
+				fatal("Bad tls-cipher in config: " + line)
+			}
+		}
+	}
+	if !found {
+		fatal("tls-cipher directive missing from config")
+	}
 }

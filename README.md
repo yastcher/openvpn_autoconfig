@@ -24,7 +24,7 @@ docker compose up -d             # start server
 ### Create Client
 
 ```bash
-docker compose exec openvpn vpn create phone
+docker compose exec openvpn vpn create your_config_name
 ```
 
 File `./clients/phone.ovpn` — import into OpenVPN Connect.
@@ -102,7 +102,7 @@ docker compose up -d             # запуск сервера
 ### Создание клиента
 
 ```bash
-docker compose exec openvpn vpn create phone
+docker compose exec openvpn vpn create your_config_name
 ```
 
 Файл `./clients/phone.ovpn` — импортируй в OpenVPN Connect.
