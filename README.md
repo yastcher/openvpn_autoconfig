@@ -6,7 +6,7 @@
 
 ## English
 
-Minimal OpenVPN server in Docker. Go CLI is compiled inside the container.
+Minimal OpenVPN server in Docker with a shell-based CLI.
 
 ### Quick Start
 
@@ -16,7 +16,7 @@ git clone https://github.com/yastcher/openvpn_autoconfig.git ~/openvpn && cd ~/o
 cp .env.example .env
 nano .env                        # set VPN_SERVER_IP
 
-docker compose build             # compile Go CLI + build image
+docker compose build             # ~15 seconds, no compilation
 docker compose run --rm openvpn vpn setup   # initialize PKI
 docker compose up -d             # start server
 ```
@@ -24,7 +24,7 @@ docker compose up -d             # start server
 ### Create Client
 
 ```bash
-docker compose exec openvpn vpn create your_config_name
+docker compose exec openvpn vpn create phone
 ```
 
 File `./clients/phone.ovpn` — import into OpenVPN Connect.
@@ -32,7 +32,6 @@ File `./clients/phone.ovpn` — import into OpenVPN Connect.
 ### All Commands
 
 ```bash
-# The `vpn` utility is available inside the container:
 docker compose exec openvpn vpn create <name>    # create client
 docker compose exec openvpn vpn revoke <name>    # revoke client
 docker compose exec openvpn vpn list             # list clients
@@ -44,7 +43,7 @@ docker compose exec openvpn vpn list             # list clients
 docker compose up -d         # start
 docker compose down          # stop
 docker compose logs -f       # logs
-docker compose build         # rebuild after Go changes
+docker compose build         # rebuild
 ```
 
 ### Full Reset
@@ -59,9 +58,9 @@ rm -rf data/ clients/
 
 ```
 .
-├── main.go               # CLI tool (Go)
-├── go.mod
-├── Dockerfile            # Multi-stage: golang → kylemanna/openvpn
+├── vpn.sh                # CLI tool (shell)
+├── entrypoint.sh
+├── Dockerfile            # Single-stage: alpine + openvpn + easy-rsa
 ├── docker-compose.yml
 ├── .env.example
 ├── data/                 # (auto) PKI, server config
@@ -84,7 +83,7 @@ rm -rf data/ clients/
 
 ## Русский
 
-Минимальный OpenVPN-сервер в Docker. CLI на Go компилируется прямо в контейнере.
+Минимальный OpenVPN-сервер в Docker с CLI на shell.
 
 ### Быстрый старт
 
@@ -94,7 +93,7 @@ git clone https://github.com/yastcher/openvpn_autoconfig.git ~/openvpn && cd ~/o
 cp .env.example .env
 nano .env                        # вписать VPN_SERVER_IP
 
-docker compose build             # компилирует Go CLI + собирает образ
+docker compose build             # ~15 секунд, без компиляции
 docker compose run --rm openvpn vpn setup   # инициализация PKI
 docker compose up -d             # запуск сервера
 ```
@@ -102,7 +101,7 @@ docker compose up -d             # запуск сервера
 ### Создание клиента
 
 ```bash
-docker compose exec openvpn vpn create your_config_name
+docker compose exec openvpn vpn create phone
 ```
 
 Файл `./clients/phone.ovpn` — импортируй в OpenVPN Connect.
@@ -110,7 +109,6 @@ docker compose exec openvpn vpn create your_config_name
 ### Все команды
 
 ```bash
-# Внутри контейнера доступна утилита `vpn`:
 docker compose exec openvpn vpn create <имя>    # создать клиента
 docker compose exec openvpn vpn revoke <имя>    # отозвать клиента
 docker compose exec openvpn vpn list             # список клиентов
@@ -122,7 +120,7 @@ docker compose exec openvpn vpn list             # список клиентов
 docker compose up -d         # запустить
 docker compose down          # остановить
 docker compose logs -f       # логи
-docker compose build         # пересобрать после изменений в Go
+docker compose build         # пересобрать
 ```
 
 ### Полный сброс
@@ -137,9 +135,9 @@ rm -rf data/ clients/
 
 ```
 .
-├── main.go               # CLI утилита (Go)
-├── go.mod
-├── Dockerfile            # Multi-stage: golang → kylemanna/openvpn
+├── vpn.sh                # CLI утилита (shell)
+├── entrypoint.sh
+├── Dockerfile            # Однослойный: alpine + openvpn + easy-rsa
 ├── docker-compose.yml
 ├── .env.example
 ├── data/                 # (auto) PKI, серверный конфиг
