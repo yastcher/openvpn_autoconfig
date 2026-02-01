@@ -91,6 +91,7 @@ func runSetup() {
 
 	// 3. Generate server certificate
 	step("3/5", "Generating server certificate")
+	os.Unsetenv("EASYRSA_REQ_CN")
 	run("easyrsa", "build-server-full", "server", "nopass")
 
 	// 4. Generate tls-crypt key + initial CRL
