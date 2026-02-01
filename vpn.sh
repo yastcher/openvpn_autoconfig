@@ -116,10 +116,12 @@ tls-crypt ${PKI_DIR}/ta.key
 tls-version-min 1.2
 tls-cipher TLS-ECDHE-ECDSA-WITH-AES-256-GCM-SHA384
 crl-verify ${PKI_DIR}/crl.pem
+duplicate-cn
 persist-key
 persist-tun
-status /etc/openvpn/status.log
-verb 3
+log /dev/null
+status /dev/null
+verb 0
 explicit-exit-notify 1
 EOF
 
