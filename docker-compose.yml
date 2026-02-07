@@ -5,13 +5,13 @@ services:
     cap_add:
       - NET_ADMIN
     ports:
-      - "${VPN_PORT:-1194}:1194/udp"
+      - "${VPN_PORT:-443}:443/tcp"
     volumes:
       - ./data:/etc/openvpn
       - ./clients:/clients
     environment:
       - VPN_SERVER_IP=${VPN_SERVER_IP}
-      - VPN_PORT=${VPN_PORT:-1194}
+      - VPN_PORT=${VPN_PORT:-443}
     sysctls:
       - net.ipv4.ip_forward=1
       - net.ipv6.conf.default.forwarding=1

@@ -43,7 +43,7 @@ load_vpn_env() {
     fi
 
     [ -z "$VPN_IP" ] && fatal "VPN_SERVER_IP not set"
-    VPN_PORT_VAL="${VPN_PORT_VAL:-1194}"
+    VPN_PORT_VAL="${VPN_PORT_VAL:-443}"
 }
 
 # Extract only the PEM block from EasyRSA cert files
@@ -59,7 +59,7 @@ cmd_setup() {
     ip="${VPN_SERVER_IP:-}"
     [ -z "$ip" ] || [ "$ip" = "YOUR_SERVER_IP" ] && fatal "VPN_SERVER_IP not set. Check .env"
 
-    port="${VPN_PORT:-1194}"
+    port="${VPN_PORT:-443}"
 
     [ -d "$PKI_DIR" ] && fatal "PKI already initialized. To reset: delete ./data/ and run again."
 
@@ -67,7 +67,7 @@ cmd_setup() {
     printf "╔══════════════════════════════════════╗\n"
     printf "║  OpenVPN Setup                       ║\n"
     printf "║  IP:   %-30s║\n" "$ip"
-    printf "║  Port: %-30s║\n" "${port}/udp"
+    printf "║  Port: %-30s║\n" "${port}/tcp"
     printf "╚══════════════════════════════════════╝\n"
     printf "\n"
 
@@ -95,9 +95,12 @@ cmd_setup() {
     step "5/5" "Writing server config"
 
     cat > "$OVPN_DIR/openvpn.conf" <<EOF
-port 1194
-proto udp
+port 443
+proto tcp
 dev tun
+tcp-nodelay
+sndbuf 0
+rcvbuf 0
 ca ${PKI_DIR}/ca.crt
 cert ${PKI_DIR}/issued/server.crt
 key ${PKI_DIR}/private/server.key
@@ -109,6 +112,8 @@ push "redirect-gateway def1 bypass-dhcp"
 push "dhcp-option DNS 1.1.1.1"
 push "dhcp-option DNS 1.0.0.1"
 push "block-outside-dns"
+push "sndbuf 0"
+push "rcvbuf 0"
 keepalive 10 120
 cipher AES-256-GCM
 auth SHA256
@@ -122,7 +127,6 @@ persist-tun
 log /dev/null
 status /dev/null
 verb 0
-explicit-exit-notify 1
 EOF
 
     # Save connection info for client generation
@@ -166,7 +170,7 @@ cmd_create() {
     cat > "$out_path" <<EOF
 client
 dev tun
-proto udp
+proto tcp
 remote ${VPN_IP} ${VPN_PORT_VAL}
 resolv-retry infinite
 nobind
@@ -183,7 +187,6 @@ tls-cipher TLS-ECDHE-ECDSA-WITH-AES-256-GCM-SHA384
 ignore-unknown-option block-outside-dns
 setenv opt block-outside-dns
 verb 3
-explicit-exit-notify
 <ca>
 ${ca_cert}
 </ca>
@@ -280,7 +283,7 @@ Commands:
 
 Environment variables (for setup):
   VPN_SERVER_IP   Public server IP (required)
-  VPN_PORT        External port (default 1194)
+  VPN_PORT        External port (default 443)
 EOF
 }
 
