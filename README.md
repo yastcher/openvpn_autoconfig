@@ -37,6 +37,21 @@ docker compose exec openvpn vpn revoke <name>    # revoke client
 docker compose exec openvpn vpn list             # list clients
 ```
 
+If you will remove `duplicate-cn` from the client `.ovpn`
+connection is bound to one device at a time — a second connection with the same
+certificate will disconnect the first.
+
+### IPv6
+
+To assign IPv6 addresses to VPN clients, add to `.env`:
+
+```
+VPN_IPV6_SUBNET=fd00:0:0:1::/64
+```
+
+Then re-initialize the server (`setup`). The server uses NAT66 — clients get a private ULA
+address and exit through the VPS's real IPv6 address, same as IPv4 works.
+
 ### Server Management
 
 ```bash
@@ -77,7 +92,8 @@ rm -rf data/ clients/
 | TLS control    | tls-crypt                             |
 | TLS min        | 1.2                                   |
 | Key exchange   | ECDHE-ECDSA-AES-256-GCM-SHA384       |
-| DNS            | 1.1.1.1 / 1.0.0.1 (Cloudflare)       |
+| DNS (IPv4)     | 1.1.1.1 / 1.0.0.1 (Cloudflare)       |
+| DNS (IPv6)     | 2606:4700:4700::1111 (if IPv6 enabled)|
 
 ---
 
@@ -113,6 +129,21 @@ docker compose exec openvpn vpn create <имя>    # создать клиент
 docker compose exec openvpn vpn revoke <имя>    # отозвать клиента
 docker compose exec openvpn vpn list             # список клиентов
 ```
+
+Если удалить `duplicate-cn` из `.ovpn`, то каждое подключение
+будет привязано к одному устройству — и второе подключение
+с тем же сертификатом будет разорывать первое.
+
+### IPv6
+
+Чтобы выдавать клиентам IPv6-адреса, добавь в `.env`:
+
+```
+VPN_IPV6_SUBNET=fd00:0:0:1::/64
+```
+
+После этого пересоздай сервер (`setup`). Используется NAT66 — клиенты получают приватный
+ULA-адрес и выходят наружу через реальный IPv6 VPS, точно так же как работает IPv4.
 
 ### Управление сервером
 
@@ -154,4 +185,5 @@ rm -rf data/ clients/
 | TLS control    | tls-crypt                             |
 | TLS min        | 1.2                                   |
 | Key exchange   | ECDHE-ECDSA-AES-256-GCM-SHA384       |
-| DNS            | 1.1.1.1 / 1.0.0.1 (Cloudflare)       |
+| DNS (IPv4)     | 1.1.1.1 / 1.0.0.1 (Cloudflare)       |
+| DNS (IPv6)     | 2606:4700:4700::1111 (при включённом IPv6) |

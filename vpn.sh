@@ -60,6 +60,7 @@ cmd_setup() {
     [ -z "$ip" ] || [ "$ip" = "YOUR_SERVER_IP" ] && fatal "VPN_SERVER_IP not set. Check .env"
 
     port="${VPN_PORT:-443}"
+    ipv6_subnet="${VPN_IPV6_SUBNET:-}"
 
     [ -d "$PKI_DIR" ] && fatal "PKI already initialized. To reset: delete ./data/ and run again."
 
@@ -94,6 +95,15 @@ cmd_setup() {
     # 5. Write server config
     step "5/5" "Writing server config"
 
+    ipv6_block=""
+    if [ -n "$ipv6_subnet" ]; then
+        ipv6_block="server-ipv6 ${ipv6_subnet}
+push \"tun-ipv6\"
+push \"route-ipv6 2000::/3\"
+push \"dhcp-option DNS6 2606:4700:4700::1111\"
+push \"dhcp-option DNS6 2606:4700:4700::1001\""
+    fi
+
     cat > "$OVPN_DIR/openvpn.conf" <<EOF
 port 443
 proto tcp
@@ -107,6 +117,7 @@ key ${PKI_DIR}/private/server.key
 dh none
 topology subnet
 server 192.168.255.0 255.255.255.0
+${ipv6_block}
 ifconfig-pool-persist /etc/openvpn/ipp.txt
 push "redirect-gateway def1 bypass-dhcp"
 push "dhcp-option DNS 1.1.1.1"
@@ -228,7 +239,6 @@ cmd_revoke() {
     chmod 644 "$PKI_DIR/crl.pem"
 
     rm -f "$CLIENTS_DIR/${name}.ovpn"
-
     printf "\n✅ Client %s revoked. Its .ovpn no longer works.\n\n" "$name"
 }
 
@@ -282,8 +292,9 @@ Commands:
   list            List clients
 
 Environment variables (for setup):
-  VPN_SERVER_IP   Public server IP (required)
-  VPN_PORT        External port (default 443)
+  VPN_SERVER_IP      Public server IP (required)
+  VPN_PORT           External port (default 443)
+  VPN_IPV6_SUBNET    IPv6 subnet for clients, e.g. fd00:0:0:1::/64 (optional)
 EOF
 }
 

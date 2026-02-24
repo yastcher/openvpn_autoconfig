@@ -12,6 +12,12 @@ if [ "${1:-serve}" = "serve" ]; then
     iptables -A FORWARD -i tun0 -j ACCEPT
     iptables -A FORWARD -o tun0 -j ACCEPT
 
+    if [ -n "${VPN_IPV6_SUBNET:-}" ]; then
+        ip6tables -t nat -A POSTROUTING -s "$VPN_IPV6_SUBNET" -j MASQUERADE
+        ip6tables -A FORWARD -i tun0 -j ACCEPT
+        ip6tables -A FORWARD -o tun0 -j ACCEPT
+    fi
+
     exec openvpn --config /etc/openvpn/openvpn.conf
 fi
 

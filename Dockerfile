@@ -1,5 +1,5 @@
 FROM alpine:3.20
-RUN apk add --no-cache openvpn easy-rsa iptables && \
+RUN apk add --no-cache openvpn easy-rsa iptables ip6tables && \
     ln -s /usr/share/easy-rsa/easyrsa /usr/local/bin/easyrsa
 COPY vpn.sh /usr/local/bin/vpn
 COPY entrypoint.sh /entrypoint.sh
