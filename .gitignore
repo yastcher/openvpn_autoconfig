@@ -5,3 +5,4 @@ clients/
 *.ovpn
 .idea
 .claude
+shadowsocks/config.json

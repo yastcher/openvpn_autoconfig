@@ -79,7 +79,8 @@ rm -rf data/ clients/
 ├── docker-compose.yml
 ├── .env.example
 ├── data/                 # (auto) PKI, server config
-└── clients/              # (auto) client .ovpn files
+├── clients/              # (auto) client .ovpn files
+└── shadowsocks/          # Shadowsocks client (profile: shadowsocks)
 ```
 
 ### Cryptography
@@ -172,7 +173,8 @@ rm -rf data/ clients/
 ├── docker-compose.yml
 ├── .env.example
 ├── data/                 # (auto) PKI, серверный конфиг
-└── clients/              # (auto) .ovpn файлы клиентов
+├── clients/              # (auto) .ovpn файлы клиентов
+└── shadowsocks/          # Shadowsocks клиент (profile: shadowsocks)
 ```
 
 ### Криптография

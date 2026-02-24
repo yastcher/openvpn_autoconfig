@@ -18,3 +18,14 @@ services:
       - net.ipv6.conf.default.forwarding=1
       - net.ipv6.conf.all.forwarding=1
     restart: unless-stopped
+
+#  shadowsocks:
+#    image: ghcr.io/shadowsocks/sslocal-rust:latest
+#    container_name: shadowsocks
+#    volumes:
+#      - ./shadowsocks/config.json:/etc/shadowsocks-rust/config.json
+#    restart: unless-stopped
+
+networks:
+  default:
+    enable_ipv6: true

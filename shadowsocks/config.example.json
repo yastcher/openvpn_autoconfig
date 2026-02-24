@@ -1,0 +1,8 @@
+{
+    "server": "VPS_USA_IP",
+    "server_port": 8388,
+    "password": "CHANGE_ME",
+    "method": "chacha20-ietf-poly1305",
+    "local_address": "::",
+    "local_port": 1080
+}
